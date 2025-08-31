@@ -20,20 +20,36 @@ class AgentBeatsPracticeAgent:
             return f"Error processing request: {str(e)}"
 
 class OllamaModel:
-    """Ollama Llama 3.2 Model"""
+    """Ollama Llama 3.2 Model with Agent Context"""
     def __init__(self):
         self.ollama = ollama
         self.model = 'llama3.2'
+        self.system_prompt = """You will solve mathematics-based word problems and arithmetic problems. Return ONLY the final numerical answer with the appropriate unit if specified in the problem. Do not show your work, calculations, or explanations.
+
+Examples:
+- For "What is 5 + 3?" → "8"
+- For "A rectangle is 4m long and 3m wide. What is the perimeter?" → "14 m"
+- For "Calculate 12 × 7" → "84"
+- For "A rectangle is 8 cm long and 6 cm wide. What is its perimeter?" → "28 cm"
+
+Format: [number] [unit] (if unit is mentioned in the problem)
+"""
 
     def chat(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
         try:
+            # Prepend system message if not already present
+            if not messages or messages[0].get('role') != 'system':
+                messages = [{'role': 'system', 'content': self.system_prompt}] + messages
+            
             return self.ollama.chat(model=self.model, messages=messages)
         except Exception as e:
             return {"message": {"content": f"Ollama API error: {str(e)}"}}
     
     def generate(self, prompt: str) -> Dict[str, Any]:
         try:
-            return self.ollama.generate(model=self.model, prompt=prompt)
+            # Add system context to the prompt
+            full_prompt = f"{self.system_prompt}\n\nUser: {prompt}\n\nAssistant:"
+            return self.ollama.generate(model=self.model, prompt=full_prompt)
         except Exception as e:
             return {"response": f"Ollama API error: {str(e)}"}
     

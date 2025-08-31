@@ -9,7 +9,8 @@ try:
         AgentCard,
         AgentSkill,
     )
-    print("✓ a2a modules imported")
+    from starlette.middleware.cors import CORSMiddleware
+    print("✓ a2a modules and CORS middleware imported")
 except ImportError as e:
     print(f"✗ Failed to import a2a modules: {e}")
     exit(1)
@@ -32,7 +33,7 @@ if __name__ == '__main__':
             id='basic_arithmetic_operations',
             name='Arithmetic Skill',
             description='Returns answers to basic arithmetic operations',
-            tags=['airthmetic', 'basic'],
+            tags=['arithmetic', 'basic'],
             examples=['6', '-3', '0', '452', '12344'],
         )
         print("✓ Agent skill created")
@@ -42,7 +43,7 @@ if __name__ == '__main__':
         public_agent_card = AgentCard(
             name='Agent Beats Practice Agent',
             description='Completes various practice tasks',
-            url='http://localhost:3000/.well-known/agent-card.json',
+            url='http://localhost:3000/',
             version='1.0.0',
             default_input_modes=['text'],
             default_output_modes=['text'],
@@ -68,8 +69,36 @@ if __name__ == '__main__':
         )
         print("✓ A2A server application created")
         
+        # Add CORS middleware to handle cross-origin requests
+        app = server.build()
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],  # Allow all origins for development
+            allow_credentials=True,
+            allow_methods=["*"],  # Allow all methods including OPTIONS
+            allow_headers=["*"],  # Allow all headers
+        )
+        print("✓ CORS middleware added")
+        
+        # Add a simple root route for testing
+        from starlette.responses import JSONResponse
+        from starlette.routing import Route
+        
+        async def root_handler(request):
+            return JSONResponse({
+                "message": "Agent Beats Practice Agent is running!",
+                "status": "online",
+                "endpoints": {
+                    "agent_card": "/.well-known/agent-card.json",
+                    "a2a_rpc": "/a2a",
+                }
+            })
+        
+        app.routes.insert(0, Route("/", root_handler, methods=["GET"]))
+        print("✓ Root handler added")
+        
         print("Starting server on http://0.0.0.0:3000...")
-        uvicorn.run(server.build(), host='0.0.0.0', port=3000)
+        uvicorn.run(app, host='0.0.0.0', port=3000)
         
     except Exception as e:
         print(f"✗ Error creating server: {e}")
