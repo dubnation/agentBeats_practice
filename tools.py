@@ -180,13 +180,16 @@ def store_client_input(input_text: str, session_id: str = None, user_id: str = "
         return f"❌ Failed to store client input"
 
 def get_recent_client_inputs(k: int = 10, user_id: str = "default") -> str:
-    """Retrieve the last k client inputs from the history database"""
+    """Retrieve the last k client inputs from the history database (optimized for context efficiency)"""
     try:
         k = int(k)  # Ensure k is an integer
         if k <= 0:
             return "❌ Number of records must be greater than 0"
-        if k > 100:
-            return "❌ Maximum 100 records can be retrieved at once"
+        if k > 5:  # Reduced to 5 to prevent context overload
+            k = 5
+            output_prefix = "⚠️ Limited to 5 records to manage context size. "
+        else:
+            output_prefix = ""
             
         inputs = history_db.get_recent_inputs(k, user_id)
         total_count = history_db.get_input_count(user_id)
@@ -194,18 +197,24 @@ def get_recent_client_inputs(k: int = 10, user_id: str = "default") -> str:
         if not inputs:
             return f"❌ No client inputs found in database (total stored: {total_count})"
         
-        output = f"📋 Last {len(inputs)} client inputs (out of {total_count} total):\n\n"
+        # Compact format to save tokens
+        output = f"{output_prefix}📋 Last {len(inputs)} inputs ({total_count} total):\n"
         
         for i, record in enumerate(inputs, 1):
-            # Format timestamp for better readability
+            # More compact timestamp
             timestamp = datetime.fromisoformat(record['timestamp'].replace('Z', '+00:00')) if record['timestamp'] else None
-            time_str = timestamp.strftime("%Y-%m-%d %H:%M:%S") if timestamp else "Unknown"
+            time_str = timestamp.strftime("%m/%d %H:%M") if timestamp else "?"
             
-            output += f"{i}. [{time_str}] ID:{record['id']}\n"
-            output += f"   Input: {record['input'][:100]}{'...' if len(record['input']) > 100 else ''}\n"
-            if record['session_id']:
-                output += f"   Session: {record['session_id']}\n"
-            output += "\n"
+            # Show more characters for number pairs and important data
+            input_text = record['input']
+            if len(input_text) > 120:  # Increased from 60 to 120 to show full number pairs
+                input_text = input_text[:117] + "..."
+            
+            output += f"{i}. [{time_str}] {input_text}\n"
+        
+        # Add summary if there are many more inputs
+        if total_count > len(inputs):
+            output += f"... and {total_count - len(inputs)} more inputs in history\n"
         
         return output.strip()
         
@@ -288,15 +297,15 @@ AVAILABLE_TOOLS = [
     },
     {
         "name": "get_recent_client_inputs",
-        "description": "Retrieve the last k client inputs from the history database to review previous conversations",
+        "description": "Retrieve recent client inputs from history database (context-optimized, max 5 entries)",
         "input_schema": {
             "type": "object",
             "properties": {
                 "k": {
                     "type": "integer",
-                    "description": "Number of recent inputs to retrieve (1-100)",
+                    "description": "Number of recent inputs to retrieve (1-5, auto-capped for context efficiency)",
                     "minimum": 1,
-                    "maximum": 100
+                    "maximum": 5
                 },
                 "user_id": {
                     "type": "string",

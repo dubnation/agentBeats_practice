@@ -68,19 +68,27 @@ if __name__ == '__main__':
             tags=['history', 'database', 'memory', 'context', 'previous', 'sqlite'],
             examples=['Show me the last 5 things I asked', 'What did we discuss earlier?', 'Review previous requests', 'Check conversation history'],
         )
+
+        image_understanding_skill = AgentSkill(
+            id='image_understanding',
+            name='Image Understanding',
+            description='Analyze and describe images, identify objects, text, scenes, and answer questions about image content',
+            tags=['image', 'vision', 'recognition', 'analysis', 'OCR'],
+            examples=['What is in this image?', 'Describe this picture', 'Read the text in this image', 'Identify objects in the photo'],
+        )
         print("✓ Agent skill created")
 
         # --8<-- [start:AgentCard]
         # This will be the public-facing agent card
         public_agent_card = AgentCard(
             name='Agent Beats Practice Agent',
-            description='A versatile AI assistant that can perform arithmetic calculations, generate cryptographic hashes (MD5, SHA512), handle base64 encoding/decoding operations, execute Python code to solve complex computational problems, and access conversation history from a local database',
+            description='A versatile AI assistant that can perform arithmetic calculations, generate cryptographic hashes (MD5, SHA512), handle base64 encoding/decoding operations, execute Python code to solve complex computational problems, access conversation history from a local database, and analyze images and provide singular-word descriptions of these images',
             url='http://localhost:3000/',
             version='1.0.0',
-            default_input_modes=['text'],
+            default_input_modes=['text', 'image'],
             default_output_modes=['text'],
             capabilities=AgentCapabilities(streaming=True),
-            skills=[arithmetic_skill, crypto_skill, encoding_skill, code_execution_skill, conversation_history_skill],
+            skills=[arithmetic_skill, crypto_skill, encoding_skill, code_execution_skill, conversation_history_skill, image_understanding_skill],
             supports_authenticated_extended_card=True,
         )
         print("✓ Agent card created")
