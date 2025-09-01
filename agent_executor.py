@@ -7,7 +7,7 @@ import os
 from dotenv import load_dotenv
 import re
 import json
-from tools import AVAILABLE_TOOLS, execute_tool
+from tools import AVAILABLE_TOOLS, execute_tool, store_client_input
 
 # Load environment variables from .env file
 load_dotenv()
@@ -60,13 +60,14 @@ class AnthropicModel:
         
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = 'claude-3-5-sonnet-20241022'  # Latest Claude model
-        self.system_prompt = """You are a helpful AI assistant with access to various tools for mathematical calculations, text processing, data encoding/decoding, and code execution.
+        self.system_prompt = """You are a helpful AI assistant with access to various tools for mathematical calculations, text processing, data encoding/decoding, code execution, and conversation history tracking.
 
 You can:
 1. Solve mathematical problems and return numerical answers
 2. Generate MD5 and SHA512 hashes of text
 3. Encode and decode base64 data
 4. Write and execute Python code to solve complex computational problems
+5. Access previous client inputs from the conversation history database
 
 IMPORTANT: You can make multiple tool calls in sequence when needed. For example:
 - If asked to hash something multiple times, use the output of one hash as input to the next
@@ -84,9 +85,21 @@ CODE EXECUTION GUIDELINES:
   * Mathematical sequences or series
   * Any computation beyond simple arithmetic
 
+CONVERSATION HISTORY CAPABILITIES:
+- All client inputs are automatically stored in a SQLite database
+- Use get_recent_client_inputs(k) to retrieve the last k client inputs from the database
+- This is useful for:
+  * Reviewing what was discussed earlier in the session
+  * Finding patterns in previous requests
+  * Referencing information from past conversations
+  * Understanding context when a user refers to "earlier" or "before"
+- The database stores inputs with timestamps and session information
+- You can retrieve up to 100 recent inputs at once (parameter k between 1-100)
+
 When given a simple math problem, solve it step by step and provide the final numerical answer.
 When asked to hash text or encode/decode data, use the appropriate tools.
 When asked to solve complex computational problems, write and execute Python code.
+When a user refers to previous conversations or asks about "what we discussed before", use get_recent_client_inputs to check the history.
 When asked to perform multiple operations in sequence, use multiple tool calls with the output of each operation as input to the next.
 
 Always be helpful and provide clear responses, showing your work when performing multiple steps."""
@@ -192,6 +205,8 @@ class AgentBeatsPracticeAgentExecutor(AgentExecutor):
     ) -> None:
         # Extract user input from A2A message parts structure
         user_input = "No input provided"
+        session_id = None
+        user_id = "default"
         
         try:
             # A2A uses message.parts[0].root.text structure
@@ -203,12 +218,29 @@ class AgentBeatsPracticeAgentExecutor(AgentExecutor):
                 
                 user_input = context.message.parts[0].root.text
                 print(f"✅ Successfully extracted user input: '{user_input}'")
+                
+                # Try to extract session/user ID from context if available
+                if hasattr(context, 'session_id'):
+                    session_id = str(context.session_id)
+                if hasattr(context, 'user_id'):
+                    user_id = str(context.user_id)
+                elif hasattr(context, 'message') and hasattr(context.message, 'user_id'):
+                    user_id = str(context.message.user_id)
+                
             else:
                 print("❌ Could not extract user input from A2A message structure")
                 
         except Exception as e:
             print(f"❌ Error extracting user input: {e}")
             user_input = "Error extracting input"
+        
+        # Store the client input in the database (if it's not empty or error message)
+        if user_input and user_input != "No input provided" and not user_input.startswith("Error extracting"):
+            try:
+                store_result = store_client_input(user_input, session_id, user_id)
+                print(f"📝 {store_result}")
+            except Exception as e:
+                print(f"❌ Failed to store input in database: {e}")
         
         # Pass the input to the agent
         result = await self.agent.invoke(user_input)

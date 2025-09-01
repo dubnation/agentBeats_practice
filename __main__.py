@@ -60,19 +60,27 @@ if __name__ == '__main__':
             tags=['python', 'code', 'algorithms', 'computation', 'prime', 'math'],
             examples=['Finding prime numbers up to 100', 'Computing factorial of 50', 'Sum of squares modulo 1000', 'Fibonacci sequence'],
         )
+        
+        conversation_history_skill = AgentSkill(
+            id='conversation_history',
+            name='Conversation History',
+            description='Access and review previous client inputs stored in a local SQLite database for context and reference',
+            tags=['history', 'database', 'memory', 'context', 'previous', 'sqlite'],
+            examples=['Show me the last 5 things I asked', 'What did we discuss earlier?', 'Review previous requests', 'Check conversation history'],
+        )
         print("✓ Agent skill created")
 
         # --8<-- [start:AgentCard]
         # This will be the public-facing agent card
         public_agent_card = AgentCard(
             name='Agent Beats Practice Agent',
-            description='A versatile AI assistant that can perform arithmetic calculations, generate cryptographic hashes (MD5, SHA512), handle base64 encoding/decoding operations, and execute Python code to solve complex computational problems',
+            description='A versatile AI assistant that can perform arithmetic calculations, generate cryptographic hashes (MD5, SHA512), handle base64 encoding/decoding operations, execute Python code to solve complex computational problems, and access conversation history from a local database',
             url='http://localhost:3000/',
             version='1.0.0',
             default_input_modes=['text'],
             default_output_modes=['text'],
             capabilities=AgentCapabilities(streaming=True),
-            skills=[arithmetic_skill, crypto_skill, encoding_skill, code_execution_skill],
+            skills=[arithmetic_skill, crypto_skill, encoding_skill, code_execution_skill, conversation_history_skill],
             supports_authenticated_extended_card=True,
         )
         print("✓ Agent card created")

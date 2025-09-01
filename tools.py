@@ -1,6 +1,9 @@
 import hashlib
 import base64
-from typing import Dict, Any, List
+import sqlite3
+import os
+from datetime import datetime
+from typing import Dict, Any, List, Optional
 
 # Tool definitions for the agent
 def md5_digest(data: str) -> str:
@@ -61,6 +64,155 @@ def execute_code(code: str) -> str:
             
     except Exception as e:
         return f"Error setting up code execution: {str(e)}"
+
+
+class InputHistoryDB:
+    """SQLite3 database for storing client input history"""
+    
+    def __init__(self, db_path: str = "./client_history.db"):
+        self.db_path = db_path
+        self._init_database()
+    
+    def _init_database(self):
+        """Initialize the SQLite database with required tables"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        # Create client_inputs table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS client_inputs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                input_text TEXT NOT NULL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                session_id TEXT,
+                user_id TEXT
+            )
+        ''')
+        
+        # Create index for faster lookups
+        cursor.execute('''
+            CREATE INDEX IF NOT EXISTS idx_timestamp 
+            ON client_inputs(timestamp DESC)
+        ''')
+        
+        conn.commit()
+        conn.close()
+    
+    def store_input(self, input_text: str, session_id: str = None, user_id: str = "default") -> bool:
+        """Store a client input in the database"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT INTO client_inputs (input_text, session_id, user_id) 
+                VALUES (?, ?, ?)
+            ''', (input_text, session_id, user_id))
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            print(f"Error storing input: {e}")
+            return False
+    
+    def get_recent_inputs(self, k: int = 10, user_id: str = "default") -> List[Dict[str, Any]]:
+        """Retrieve the last k client inputs from the database"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, input_text, timestamp, session_id 
+                FROM client_inputs 
+                WHERE user_id = ? 
+                ORDER BY timestamp DESC 
+                LIMIT ?
+            ''', (user_id, k))
+            
+            results = cursor.fetchall()
+            conn.close()
+            
+            return [
+                {
+                    "id": row[0],
+                    "input": row[1],
+                    "timestamp": row[2],
+                    "session_id": row[3]
+                } 
+                for row in results
+            ]
+            
+        except Exception as e:
+            print(f"Error retrieving recent inputs: {e}")
+            return []
+    
+    def get_input_count(self, user_id: str = "default") -> int:
+        """Get total count of stored inputs for a user"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT COUNT(*) FROM client_inputs WHERE user_id = ?
+            ''', (user_id,))
+            
+            result = cursor.fetchone()
+            conn.close()
+            
+            return result[0] if result else 0
+            
+        except Exception as e:
+            print(f"Error counting inputs: {e}")
+            return 0
+
+
+# Initialize the database
+history_db = InputHistoryDB()
+
+def store_client_input(input_text: str, session_id: str = None, user_id: str = "default") -> str:
+    """Store client input in the history database"""
+    success = history_db.store_input(input_text, session_id, user_id)
+    if success:
+        return f"✅ Stored client input in history database"
+    else:
+        return f"❌ Failed to store client input"
+
+def get_recent_client_inputs(k: int = 10, user_id: str = "default") -> str:
+    """Retrieve the last k client inputs from the history database"""
+    try:
+        k = int(k)  # Ensure k is an integer
+        if k <= 0:
+            return "❌ Number of records must be greater than 0"
+        if k > 100:
+            return "❌ Maximum 100 records can be retrieved at once"
+            
+        inputs = history_db.get_recent_inputs(k, user_id)
+        total_count = history_db.get_input_count(user_id)
+        
+        if not inputs:
+            return f"❌ No client inputs found in database (total stored: {total_count})"
+        
+        output = f"📋 Last {len(inputs)} client inputs (out of {total_count} total):\n\n"
+        
+        for i, record in enumerate(inputs, 1):
+            # Format timestamp for better readability
+            timestamp = datetime.fromisoformat(record['timestamp'].replace('Z', '+00:00')) if record['timestamp'] else None
+            time_str = timestamp.strftime("%Y-%m-%d %H:%M:%S") if timestamp else "Unknown"
+            
+            output += f"{i}. [{time_str}] ID:{record['id']}\n"
+            output += f"   Input: {record['input'][:100]}{'...' if len(record['input']) > 100 else ''}\n"
+            if record['session_id']:
+                output += f"   Session: {record['session_id']}\n"
+            output += "\n"
+        
+        return output.strip()
+        
+    except ValueError:
+        return "❌ Invalid number format for k parameter"
+    except Exception as e:
+        return f"❌ Error retrieving client inputs: {str(e)}"
 
 # Tool schema definitions for Claude function calling
 AVAILABLE_TOOLS = [
@@ -133,6 +285,27 @@ AVAILABLE_TOOLS = [
             },
             "required": ["code"]
         }
+    },
+    {
+        "name": "get_recent_client_inputs",
+        "description": "Retrieve the last k client inputs from the history database to review previous conversations",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "k": {
+                    "type": "integer",
+                    "description": "Number of recent inputs to retrieve (1-100)",
+                    "minimum": 1,
+                    "maximum": 100
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "User identifier (optional, defaults to 'default')",
+                    "default": "default"
+                }
+            },
+            "required": ["k"]
+        }
     }
 ]
 
@@ -150,6 +323,11 @@ def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
             return base64_decode(arguments["data"])
         elif tool_name == "execute_code":
             return execute_code(arguments["code"])
+        elif tool_name == "get_recent_client_inputs":
+            return get_recent_client_inputs(
+                k=arguments["k"], 
+                user_id=arguments.get("user_id", "default")
+            )
         else:
             return f"Unknown tool: {tool_name}"
     except Exception as e:
