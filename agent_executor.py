@@ -5,6 +5,9 @@ from typing import Dict, Any, List
 import anthropic
 import os
 from dotenv import load_dotenv
+import re
+import json
+from tools import AVAILABLE_TOOLS, execute_tool
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,15 +20,38 @@ class AgentBeatsPracticeAgent:
         self.claude = AnthropicModel()
 
     async def invoke(self, user_input: str) -> str:
-        # Process the user input here
+        """Process user input and return only the string response."""
         try:
+            print(user_input)
             resp = await self.claude.chat(messages=[{'role': 'user', 'content': user_input}])
+            print(resp)
+            # Extract just the numerical answer
+            #answer = self.extract_numerical_answer(resp)
+            #print(f"DEBUG: Extracted answer: {answer}")
             return resp
         except Exception as e:
             return f"Error processing request: {str(e)}"
+    
+    def extract_numerical_answer(self, response: str) -> str:
+        """Extract just the numerical answer from Claude's response"""
+        # Remove any leading/trailing whitespace
+        response = response.strip()
+        
+        # Try to find a number at the start of the response
+        number_match = re.match(r'^(\d+(?:\.\d+)?)', response)
+        if number_match:
+            return number_match.group(1)
+        
+        # Try to find the last number in the response
+        numbers = re.findall(r'\b\d+(?:\.\d+)?\b', response)
+        if numbers:
+            return numbers[-1]
+        
+        # If no clear number found, return the original response
+        return response
 
 class AnthropicModel:
-    """Claude (Anthropic) Model for Mathematical Problem Solving"""
+    """Claude (Anthropic) Model with Tool Support"""
     def __init__(self):
         # Get API key from environment variables
         api_key = os.getenv('ANTHROPIC_API_KEY')
@@ -34,58 +60,125 @@ class AnthropicModel:
         
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = 'claude-3-5-sonnet-20241022'  # Latest Claude model
-        self.system_prompt = """You are a mathematical calculator. When given a math problem, solve it and return ONLY the numerical answer.
+        self.system_prompt = """You are a helpful AI assistant with access to various tools for mathematical calculations, text processing, data encoding/decoding, and code execution.
 
-Rules:
-- Solve the math problem immediately
-- Return only the final number (with units if specified)
-- Do not explain your work
-- Do not ask questions
+You can:
+1. Solve mathematical problems and return numerical answers
+2. Generate MD5 and SHA512 hashes of text
+3. Encode and decode base64 data
+4. Write and execute Python code to solve complex computational problems
 
-Examples:
-- "Tom has 23 candies, and Anna gives him 17 more. How many candies does he have in total?" → "40"
-- "A rabbit eats 6 carrots every 2 days. How many carrots will it eat in 6 days?" → "18"
-- "How many 5-dollar bills can you get in exchange for a 20-dollar bill?" → "4"
-- "What is 15 + 27?" → "42"
-- "A rectangle is 8 cm long and 6 cm wide. What is its perimeter?" → "28 cm"
+IMPORTANT: You can make multiple tool calls in sequence when needed. For example:
+- If asked to hash something multiple times, use the output of one hash as input to the next
+- If asked to encode then hash, or hash then encode, chain the operations
+- Always use the actual tool results as input for subsequent operations
 
-Give ONLY the answer."""
+CODE EXECUTION GUIDELINES:
+- For complex mathematical problems, algorithms, or data processing, write and execute Python code
+- Always write complete, runnable Python programs with print statements to show results
+- Include proper imports and error handling in your code
+- Use the execute_code tool for problems that require:
+  * Complex calculations or algorithms
+  * Prime number calculations
+  * Data processing or analysis
+  * Mathematical sequences or series
+  * Any computation beyond simple arithmetic
+
+When given a simple math problem, solve it step by step and provide the final numerical answer.
+When asked to hash text or encode/decode data, use the appropriate tools.
+When asked to solve complex computational problems, write and execute Python code.
+When asked to perform multiple operations in sequence, use multiple tool calls with the output of each operation as input to the next.
+
+Always be helpful and provide clear responses, showing your work when performing multiple steps."""
 
     async def chat(self, messages: List[Dict[str, str]]) -> str:
         try:
-            # Prepend system message if not already present
-            if not messages or messages[0].get('role') != 'system':
-                messages = [{'role': 'system', 'content': self.system_prompt}] + messages
-            
             # Convert to Claude's message format (system prompt is separate)
-            system_message = messages[0]['content'] if messages[0]['role'] == 'system' else self.system_prompt
-            user_messages = [msg for msg in messages if msg['role'] != 'system']
+            conversation_messages = [msg for msg in messages if msg['role'] != 'system']
+            max_iterations = 10  # Prevent infinite loops
+            iteration = 0
             
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1024,
-                system=system_message,
-                messages=user_messages
-            )
+            while iteration < max_iterations:
+                iteration += 1
+                print(f"🔄 Conversation iteration {iteration}")
+                
+                response = self.client.messages.create(
+                    model=self.model,
+                    max_tokens=1000,
+                    temperature=0,
+                    system=self.system_prompt,
+                    messages=conversation_messages,
+                    tools=AVAILABLE_TOOLS
+                )
+                
+                # Check if there are any tool calls in this response
+                has_tool_calls = any(block.type == "tool_use" for block in response.content)
+                
+                if not has_tool_calls:
+                    # No tool calls, this is the final response
+                    final_text = ""
+                    for content_block in response.content:
+                        if content_block.type == "text":
+                            final_text += content_block.text
+                    
+                    return final_text.strip() if final_text else "I apologize, but I couldn't generate a proper response."
+                
+                # Process tool calls
+                assistant_message_content = []
+                tool_results = []
+                
+                for content_block in response.content:
+                    if content_block.type == "text":
+                        assistant_message_content.append({
+                            "type": "text",
+                            "text": content_block.text
+                        })
+                    elif content_block.type == "tool_use":
+                        tool_name = content_block.name
+                        tool_input = content_block.input
+                        tool_id = content_block.id
+                        
+                        print(f"🔧 Using tool: {tool_name} with input: {tool_input}")
+                        
+                        # Execute the tool
+                        tool_result = execute_tool(tool_name, tool_input)
+                        print(f"📤 Tool result: {tool_result}")
+                        
+                        # Add tool use to assistant message
+                        assistant_message_content.append({
+                            "type": "tool_use",
+                            "id": tool_id,
+                            "name": tool_name,
+                            "input": tool_input
+                        })
+                        
+                        # Prepare tool result for user message
+                        tool_results.append({
+                            "type": "tool_result",
+                            "tool_use_id": tool_id,
+                            "content": tool_result
+                        })
+                
+                # Add assistant message with tool calls
+                conversation_messages.append({
+                    "role": "assistant",
+                    "content": assistant_message_content
+                })
+                
+                # Add user message with tool results
+                if tool_results:
+                    conversation_messages.append({
+                        "role": "user",
+                        "content": tool_results
+                    })
             
-            return response.content[0].text
+            # If we've hit max iterations, return what we have
+            return "I've completed the available tool calls but reached the maximum iteration limit."
+            
         except Exception as e:
+            print(f"Claude API error: {str(e)}")
             return f"Claude API error: {str(e)}"
-    
-    def generate(self, prompt: str) -> str:
-        try:
-            # Create a single user message
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=1024,
-                system=self.system_prompt,
-                messages=[{'role': 'user', 'content': prompt}]
-            )
-            
-            return response.content[0].text
-        except Exception as e:
-            return f"Claude API error: {str(e)}"
-    
+
 
 class AgentBeatsPracticeAgentExecutor(AgentExecutor):
     
@@ -97,19 +190,31 @@ class AgentBeatsPracticeAgentExecutor(AgentExecutor):
         context: RequestContext,
         event_queue: EventQueue,
     ) -> None:
-        # Extract user input from the request context
-        user_input = context.message.content if hasattr(context, 'message') and hasattr(context.message, 'content') else "No input provided"
+        # Extract user input from A2A message parts structure
+        user_input = "No input provided"
+        
+        try:
+            # A2A uses message.parts[0].root.text structure
+            if (hasattr(context, 'message') and 
+                hasattr(context.message, 'parts') and 
+                context.message.parts and
+                hasattr(context.message.parts[0], 'root') and
+                hasattr(context.message.parts[0].root, 'text')):
+                
+                user_input = context.message.parts[0].root.text
+                print(f"✅ Successfully extracted user input: '{user_input}'")
+            else:
+                print("❌ Could not extract user input from A2A message structure")
+                
+        except Exception as e:
+            print(f"❌ Error extracting user input: {e}")
+            user_input = "Error extracting input"
         
         # Pass the input to the agent
         result = await self.agent.invoke(user_input)
         await event_queue.enqueue_event(new_agent_text_message(result))
 
-    # --8<-- [end:HelloWorldAgentExecutor_execute]
-
-    # --8<-- [start:HelloWorldAgentExecutor_cancel]
     async def cancel(
         self, context: RequestContext, event_queue: EventQueue
     ) -> None:
         raise Exception('cancel not supported')
-
-

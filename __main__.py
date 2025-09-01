@@ -29,12 +29,36 @@ if __name__ == '__main__':
     
     try:
         # --8<-- [start:AgentSkill]
-        skill = AgentSkill(
+        arithmetic_skill = AgentSkill(
             id='basic_arithmetic_operations',
             name='Arithmetic Skill',
             description='Returns answers to basic arithmetic operations',
             tags=['arithmetic', 'basic'],
             examples=['6', '-3', '0', '452', '12344'],
+        )
+        
+        crypto_skill = AgentSkill(
+            id='cryptographic_operations',
+            name='Cryptographic Tools',
+            description='Generate MD5 and SHA512 hashes of text',
+            tags=['hash', 'crypto', 'md5', 'sha512'],
+            examples=['d41d8cd98f00b204e9800998ecf8427e', 'cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e'],
+        )
+        
+        encoding_skill = AgentSkill(
+            id='encoding_operations',
+            name='Encoding Tools',
+            description='Encode and decode base64 data',
+            tags=['encoding', 'base64', 'decode'],
+            examples=['SGVsbG8gV29ybGQ=', 'Hello World'],
+        )
+        
+        code_execution_skill = AgentSkill(
+            id='code_execution',
+            name='Code Execution',
+            description='Write and execute Python code to solve complex computational problems, algorithms, and mathematical calculations',
+            tags=['python', 'code', 'algorithms', 'computation', 'prime', 'math'],
+            examples=['Finding prime numbers up to 100', 'Computing factorial of 50', 'Sum of squares modulo 1000', 'Fibonacci sequence'],
         )
         print("✓ Agent skill created")
 
@@ -42,13 +66,13 @@ if __name__ == '__main__':
         # This will be the public-facing agent card
         public_agent_card = AgentCard(
             name='Agent Beats Practice Agent',
-            description='Completes various practice tasks',
+            description='A versatile AI assistant that can perform arithmetic calculations, generate cryptographic hashes (MD5, SHA512), handle base64 encoding/decoding operations, and execute Python code to solve complex computational problems',
             url='http://localhost:3000/',
             version='1.0.0',
             default_input_modes=['text'],
             default_output_modes=['text'],
             capabilities=AgentCapabilities(streaming=True),
-            skills=[skill],  # Only the basic skill for the public card
+            skills=[arithmetic_skill, crypto_skill, encoding_skill, code_execution_skill],
             supports_authenticated_extended_card=True,
         )
         print("✓ Agent card created")
@@ -70,7 +94,12 @@ if __name__ == '__main__':
         print("✓ A2A server application created")
         
         # Add CORS middleware to handle cross-origin requests
+        # Build the server application
         app = server.build()
+        
+        # Add CORS (Cross-Origin Resource Sharing) middleware
+        # This allows web browsers from different domains/origins to access our API
+        # The "*" means we're allowing all domains to access it (good for development, but should be restricted in production)
         app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],  # Allow all origins for development
@@ -80,23 +109,28 @@ if __name__ == '__main__':
         )
         print("✓ CORS middleware added")
         
-        # Add a simple root route for testing
+        # Import what we need to create a basic homepage endpoint
         from starlette.responses import JSONResponse
         from starlette.routing import Route
         
+        # Create a handler function for the homepage that returns basic server info
         async def root_handler(request):
             return JSONResponse({
                 "message": "Agent Beats Practice Agent is running!",
                 "status": "online",
                 "endpoints": {
-                    "agent_card": "/.well-known/agent-card.json",
-                    "a2a_rpc": "/a2a",
+                    "agent_card": "/.well-known/agent-card.json",  # Endpoint that describes the agent's capabilities
+                    "a2a_rpc": "/a2a",  # Main endpoint for agent-to-agent communication
                 }
             })
         
+        # Add the homepage route as the first route
         app.routes.insert(0, Route("/", root_handler, methods=["GET"]))
         print("✓ Root handler added")
         
+        # Start the server using uvicorn
+        # 0.0.0.0 means accept connections from any IP address
+        # Port 3000 is where the server will listen for requests
         print("Starting server on http://0.0.0.0:3000...")
         uvicorn.run(app, host='0.0.0.0', port=3000)
         
