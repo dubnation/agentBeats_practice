@@ -28,6 +28,16 @@ class TicTacToeDriverManager:
             chrome_options.add_argument("--disable-gpu")
             chrome_options.add_argument("--disable-web-security")
             chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            
+            # CRITICAL: Force Pacific timezone for tic-tac-toe validation
+            chrome_options.add_argument("--timezone=America/Los_Angeles")
+            
+            # Disable cache to prevent stale winning numbers
+            chrome_options.add_argument("--disable-application-cache")
+            chrome_options.add_argument("--disable-background-timer-throttling")
+            chrome_options.add_argument("--disable-renderer-backgrounding")
+            chrome_options.add_argument("--disable-backgrounding-occluded-windows")
+            
             # Add headless mode for faster performance (comment out to see browser)
             # chrome_options.add_argument("--headless")  # COMMENTED OUT - browser will be visible!
             
@@ -35,7 +45,7 @@ class TicTacToeDriverManager:
             self.driver = webdriver.Chrome(options=chrome_options)
             self.driver.set_page_load_timeout(15)  # 15 second timeout
             self.driver.implicitly_wait(15)  # 15 second implicit wait
-            print("🌐 Created new Chrome driver for tic-tac-toe (visible browser)")
+            print("🌐 Created new Chrome driver for tic-tac-toe (PST timezone, cache disabled)")
         
         return self.driver
     
@@ -521,10 +531,12 @@ def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
             result = getWinningNumber(driver=driver)
             return f"🏆 Winning number: {result}" if result else "❌ No winning number found"
         elif tool_name == "start_new_tictactoe_game":
-            # Navigate to fresh game
+            # Force a completely fresh game by refreshing and clearing cache
             driver = ttt_driver_manager.get_driver()
-            driver.get("https://ttt.puppy9.com/")
-            return "🎮 Started new tic-tac-toe game"
+            driver.delete_all_cookies()  # Clear cookies
+            driver.refresh()  # Refresh to clear DOM state
+            driver.get("https://ttt.puppy9.com/")  # Navigate to fresh game
+            return "🎮 Started fresh tic-tac-toe game (cleared cache)"
         elif tool_name == "close_tictactoe_browser":
             ttt_driver_manager.close_driver()
             return "🔒 Closed tic-tac-toe browser"

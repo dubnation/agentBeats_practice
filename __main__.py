@@ -1,4 +1,21 @@
 import uvicorn
+import os
+import time
+
+# Force Pacific Standard Time timezone (CRITICAL for tic-tac-toe validation)
+os.environ['TZ'] = 'US/Pacific'
+if hasattr(time, 'tzset'):
+    time.tzset()
+    print("✓ System timezone set to US/Pacific")
+
+# Verify timezone is correctly set
+import datetime
+current_time = datetime.datetime.now()
+print(f"✓ Current system time: {current_time} (should be Pacific time)")
+
+# Additional environment variables for timezone consistency
+os.environ['LC_TIME'] = 'en_US.UTF-8'
+os.environ['LANG'] = 'en_US.UTF-8'
 
 try:
     from a2a.server.apps import A2AStarletteApplication

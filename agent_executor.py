@@ -4,10 +4,18 @@ from a2a.utils import new_agent_text_message, new_task
 from typing import Dict, Any, List
 import anthropic
 import os
+import time
 from dotenv import load_dotenv
 import re
 import json
 from tools import AVAILABLE_TOOLS, execute_tool, store_client_input
+
+# Ensure Pacific Time Zone is set (CRITICAL for tic-tac-toe validation)
+os.environ['TZ'] = 'US/Pacific' 
+os.environ['LC_TIME'] = 'en_US.UTF-8'
+os.environ['LANG'] = 'en_US.UTF-8'
+if hasattr(time, 'tzset'):
+    time.tzset()
 
 # Load environment variables from .env file
 load_dotenv()
@@ -83,10 +91,11 @@ TOOLS USAGE:
 TIC-TAC-TOE GAMING:
 - Game board is a 2D array: [[row0], [row1], [row2]] where each cell can be 'x', 'o', or '' (empty)
 - Cell positions are numbered 0-8 in this layout: 0|1|2, 3|4|5, 6|7|8
+- CRITICAL: ALWAYS start with start_new_tictactoe_game to clear old winning numbers
 - ALWAYS use getCurrGameStatus after every move to check the current board state and game status
-- You are 'X' (goes first), computer is 'O'
+- You are 'X' (goes first), computer is 'O'  
 - Game status can be: 'win', 'lose', or 'still playing'
-- When you win, immediately use getWinningNumber to extract the 14-digit code
+- When you win, IMMEDIATELY use getWinningNumber to extract the 14-digit code (don't delay!)
 
 TIC-TAC-TOE STRATEGY (PRIORITY ORDER - ALWAYS FOLLOW THIS SEQUENCE):
 1. 🏆 IMMEDIATE WIN: If you can complete 3 X's in a line (row/column/diagonal), DO IT NOW
