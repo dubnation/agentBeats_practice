@@ -76,19 +76,27 @@ if __name__ == '__main__':
             tags=['image', 'vision', 'recognition', 'analysis', 'OCR'],
             examples=['What is in this image?', 'Describe this picture', 'Read the text in this image', 'Identify objects in the photo'],
         )
-        print("✓ Agent skill created")
+        
+        tictactoe_skill = AgentSkill(
+            id='tictactoe_game',
+            name='Tic-Tac-Toe Gaming',
+            description='Play tic-tac-toe games on https://ttt.puppy9.com/, win games strategically, and extract 14-digit winning numbers',
+            tags=['gaming', 'tictactoe', 'strategy', 'winning', 'automation'],
+            examples=['20250902101461', 'Play tic-tac-toe and get winning number', 'Win the game at ttt.puppy9.com'],
+        )
+        print("✓ Agent skills created")
 
         # --8<-- [start:AgentCard]
         # This will be the public-facing agent card
         public_agent_card = AgentCard(
             name='Agent Beats Practice Agent',
-            description='A versatile AI assistant that can perform arithmetic calculations, generate cryptographic hashes (MD5, SHA512), handle base64 encoding/decoding operations, execute Python code to solve complex computational problems, access conversation history from a local database, and analyze images and provide singular-word descriptions of these images',
+            description='A versatile AI assistant that can perform arithmetic calculations, generate cryptographic hashes (MD5, SHA512), handle base64 encoding/decoding operations, execute Python code to solve complex computational problems, access conversation history from a local database, analyze images and provide descriptions, and play tic-tac-toe games to win 14-digit numbers',
             url='http://localhost:3000/',
             version='1.0.0',
             default_input_modes=['text', 'image'],
             default_output_modes=['text'],
             capabilities=AgentCapabilities(streaming=True),
-            skills=[arithmetic_skill, crypto_skill, encoding_skill, code_execution_skill, conversation_history_skill, image_understanding_skill],
+            skills=[arithmetic_skill, crypto_skill, encoding_skill, code_execution_skill, conversation_history_skill, image_understanding_skill, tictactoe_skill],
             supports_authenticated_extended_card=True,
         )
         print("✓ Agent card created")

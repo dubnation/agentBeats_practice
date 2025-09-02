@@ -5,6 +5,50 @@ import os
 from datetime import datetime
 from typing import Dict, Any, List, Optional
 
+# Import tic-tac-toe functions
+from tictactoe_tool import press_cell, getCurrGameStatus, getWinningNumber
+
+# Selenium driver for persistent tic-tac-toe sessions
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+
+class TicTacToeDriverManager:
+    """Manages a persistent Chrome driver for tic-tac-toe games"""
+    
+    def __init__(self):
+        self.driver = None
+        self.game_url = "https://ttt.puppy9.com/"
+    
+    def get_driver(self):
+        """Get or create the persistent driver"""
+        if self.driver is None:
+            chrome_options = Options()
+            chrome_options.add_argument("--no-sandbox")
+            chrome_options.add_argument("--disable-dev-shm-usage")
+            chrome_options.add_argument("--disable-gpu")
+            chrome_options.add_argument("--disable-web-security")
+            chrome_options.add_argument("--disable-features=VizDisplayCompositor")
+            # Add headless mode for faster performance (comment out to see browser)
+            # chrome_options.add_argument("--headless")  # COMMENTED OUT - browser will be visible!
+            
+            # Set page load timeout
+            self.driver = webdriver.Chrome(options=chrome_options)
+            self.driver.set_page_load_timeout(15)  # 15 second timeout
+            self.driver.implicitly_wait(15)  # 15 second implicit wait
+            print("🌐 Created new Chrome driver for tic-tac-toe (visible browser)")
+        
+        return self.driver
+    
+    def close_driver(self):
+        """Close the persistent driver"""
+        if self.driver:
+            self.driver.quit()
+            self.driver = None
+            print("🔒 Closed tic-tac-toe Chrome driver")
+
+# Global driver manager instance
+ttt_driver_manager = TicTacToeDriverManager()
+
 # Tool definitions for the agent
 def md5_digest(data: str) -> str:
     """Generate MD5 hash of the input data (as hex string)"""
@@ -117,7 +161,7 @@ class InputHistoryDB:
             print(f"Error storing input: {e}")
             return False
     
-    def get_recent_inputs(self, k: int = 10, user_id: str = "default") -> List[Dict[str, Any]]:
+    def get_recent_inputs(self, k: int = 5, user_id: str = "default") -> List[Dict[str, Any]]:
         """Retrieve the last k client inputs from the database"""
         try:
             conn = sqlite3.connect(self.db_path)
@@ -315,6 +359,58 @@ AVAILABLE_TOOLS = [
             },
             "required": ["k"]
         }
+    },
+    {
+        "name": "press_cell",
+        "description": "Press a cell on the tic-tac-toe game board at https://ttt.puppy9.com/",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "num": {
+                    "type": "integer",
+                    "description": "Cell position to press (0-8). Layout: 0|1|2, 3|4|5, 6|7|8",
+                    "minimum": 0,
+                    "maximum": 8
+                }
+            },
+            "required": ["num"]
+        }
+    },
+    {
+        "name": "getCurrGameStatus",
+        "description": "Get current tic-tac-toe game state from https://ttt.puppy9.com/ - returns board as 2D array and game status",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "getWinningNumber",
+        "description": "Extract the 14-digit winning number from tic-tac-toe game after winning",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "start_new_tictactoe_game",
+        "description": "Start a fresh tic-tac-toe game (navigates to new game page)",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
+    },
+    {
+        "name": "close_tictactoe_browser", 
+        "description": "Close the tic-tac-toe browser when done playing (cleanup)",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
+        }
     }
 ]
 
@@ -337,6 +433,101 @@ def execute_tool(tool_name: str, arguments: Dict[str, Any]) -> str:
                 k=arguments["k"], 
                 user_id=arguments.get("user_id", "default")
             )
+        elif tool_name == "press_cell":
+            driver = ttt_driver_manager.get_driver()
+            result = press_cell(arguments["num"], driver=driver)
+            return f"✅ Cell {arguments['num']} pressed successfully" if result else f"❌ Failed to press cell {arguments['num']}"
+        elif tool_name == "getCurrGameStatus":
+            try:
+                driver = ttt_driver_manager.get_driver()
+                result = getCurrGameStatus(driver=driver)
+                if result:
+                    board = result['currentGameBoard']
+                    status = result['gameStatus']
+                    
+                    # Create enhanced board visualization with positions and clear grid
+                    def format_cell(row, col, cell):
+                        pos = row * 3 + col
+                        if cell:
+                            return f" {cell.upper()} "
+                        else:
+                            return f" {pos} "
+                    
+                    board_display = "📋 GAME BOARD (You are X, Computer is O):\n"
+                    board_display += "   Positions: 0|1|2, 3|4|5, 6|7|8\n"
+                    board_display += "   ┌───┬───┬───┐\n"
+                    
+                    for row in range(3):
+                        board_display += "   │"
+                        for col in range(3):
+                            board_display += format_cell(row, col, board[row][col]) + "│"
+                        board_display += "\n"
+                        if row < 2:
+                            board_display += "   ├───┼───┼───┤\n"
+                    
+                    board_display += "   └───┴───┴───┘\n"
+                    board_display += f"🎯 Status: {status.upper()}"
+                    
+                    # Add strategic analysis
+                    if status == "still playing":
+                        empty_cells = []
+                        for row in range(3):
+                            for col in range(3):
+                                if board[row][col] == '':
+                                    empty_cells.append(row * 3 + col)
+                        board_display += f"\n🎲 Available moves: {empty_cells}"
+                        
+                        # Check for immediate threats/opportunities
+                        threats = []
+                        opportunities = []
+                        
+                        # Quick analysis for wins/blocks (simplified)
+                        lines = [
+                            [(0,0),(0,1),(0,2)], [(1,0),(1,1),(1,2)], [(2,0),(2,1),(2,2)],  # rows
+                            [(0,0),(1,0),(2,0)], [(0,1),(1,1),(2,1)], [(0,2),(1,2),(2,2)],  # cols  
+                            [(0,0),(1,1),(2,2)], [(0,2),(1,1),(2,0)]  # diagonals
+                        ]
+                        
+                        for line in lines:
+                            x_count = sum(1 for r,c in line if board[r][c] == 'x')
+                            o_count = sum(1 for r,c in line if board[r][c] == 'o')
+                            empty_count = sum(1 for r,c in line if board[r][c] == '')
+                            
+                            if x_count == 2 and empty_count == 1:  # Can win
+                                for r,c in line:
+                                    if board[r][c] == '':
+                                        opportunities.append(r*3+c)
+                            elif o_count == 2 and empty_count == 1:  # Must block
+                                for r,c in line:
+                                    if board[r][c] == '':
+                                        threats.append(r*3+c)
+                        
+                        if opportunities:
+                            board_display += f"\n🎯 WIN OPPORTUNITIES: {list(set(opportunities))}"
+                        if threats:
+                            board_display += f"\n🚨 BLOCK THREATS: {list(set(threats))}"
+                    
+                    return board_display
+                else:
+                    return "❌ Failed to get game status"
+            except Exception as e:
+                if "timeout" in str(e).lower() or "timeoutexception" in str(e):
+                    ttt_driver_manager.close_driver()  # Reset driver on timeout
+                    return "⏱️ Website loading timeout - try again or check connection"
+                else:
+                    return f"❌ Error getting game status: {str(e)}"
+        elif tool_name == "getWinningNumber":
+            driver = ttt_driver_manager.get_driver()
+            result = getWinningNumber(driver=driver)
+            return f"🏆 Winning number: {result}" if result else "❌ No winning number found"
+        elif tool_name == "start_new_tictactoe_game":
+            # Navigate to fresh game
+            driver = ttt_driver_manager.get_driver()
+            driver.get("https://ttt.puppy9.com/")
+            return "🎮 Started new tic-tac-toe game"
+        elif tool_name == "close_tictactoe_browser":
+            ttt_driver_manager.close_driver()
+            return "🔒 Closed tic-tac-toe browser"
         else:
             return f"Unknown tool: {tool_name}"
     except Exception as e:

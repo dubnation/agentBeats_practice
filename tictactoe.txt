@@ -1,0 +1,66 @@
+"Go to the website https://ttt.puppy9.com/ and play the Tic-Tac-Toe game until you win. Once you win, find the congratulation message that contains a 14-digit secret number and provide me with that complete number."
+
+Easy to model the GameBoard as a 2D array where we pass in board in JSON data into the LLM
+Then we have the LLM calculate and make a decision on which element to press
+
+def pressfunc(position):
+    press(position)
+
+def getCurrentGameStatus():
+# Gets current gameboard status and winning message
+    return currGameBoard
+
+def getWinningNumber():
+    return winNum
+
+
+def is_board_full(board):
+    """
+    Check if the board is completely filled.
+    
+    Args:
+        board: 2D array representing the game board
+    
+    Returns:
+        bool: True if board is full
+    """
+    for row in board:
+        for cell in row:
+            if cell == '':
+                return False
+    return True
+
+
+def has_winning_combination(board, player):
+    """
+    Check if a player has a winning combination on the board.
+    
+    Args:
+        board: 2D array representing the game board
+        player: 'x' or 'o'
+    
+    Returns:
+        bool: True if player has winning combination
+    """
+    player = player.lower()
+    
+    # Check rows
+    for row in board:
+        if all(cell == player for cell in row):
+            return True
+    
+    # Check columns
+    for col in range(3):
+        if all(board[row][col] == player for row in range(3)):
+            return True
+    
+    # Check diagonals
+    if all(board[i][i] == player for i in range(3)):
+        return True
+    if all(board[i][2-i] == player for i in range(3)):
+        return True
+    
+    return False
+
+
+

@@ -68,9 +68,9 @@ class AnthropicModel:
         
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = 'claude-3-5-sonnet-20241022'  # Latest Claude model with vision
-        self.max_context_messages = 10  # Reduced for efficiency - focus on recent context only
+        self.max_context_messages = 20  # Reduced for efficiency - focus on recent context only
         self.max_tokens_estimate = 150000  # Conservative estimate for context limit
-        self.system_prompt = """You are a helpful AI assistant with tools for math, hashing (MD5/SHA512), base64 encoding/decoding, Python code execution, conversation history access, and image analysis.
+        self.system_prompt = """You are a helpful AI assistant with tools for math, hashing (MD5/SHA512), base64 encoding/decoding, Python code execution, conversation history access, image analysis, and tic-tac-toe gaming.
 
 TOOLS USAGE:
 - Math: Solve step by step, provide numerical answers
@@ -78,6 +78,40 @@ TOOLS USAGE:
 - Code: Use execute_code for complex calculations, algorithms, prime numbers, sequences
 - History: When users ask about previous conversations, use get_recent_client_inputs(k=2 or k=3) ONCE to get recent entries, then directly answer from that data. DO NOT make multiple history calls.
 - Images: Analyze, identify objects/text/scenes, perform OCR when needed
+- Tic-Tac-Toe: Play strategically to win games and extract 14-digit winning numbers
+
+TIC-TAC-TOE GAMING:
+- Game board is a 2D array: [[row0], [row1], [row2]] where each cell can be 'x', 'o', or '' (empty)
+- Cell positions are numbered 0-8 in this layout: 0|1|2, 3|4|5, 6|7|8
+- ALWAYS use getCurrGameStatus after every move to check the current board state and game status
+- You are 'X' (goes first), computer is 'O'
+- Game status can be: 'win', 'lose', or 'still playing'
+- When you win, immediately use getWinningNumber to extract the 14-digit code
+
+TIC-TAC-TOE STRATEGY (PRIORITY ORDER - ALWAYS FOLLOW THIS SEQUENCE):
+1. 🏆 IMMEDIATE WIN: If you can complete 3 X's in a line (row/column/diagonal), DO IT NOW
+2. 🚨 BLOCK THREAT: If computer can win next turn (2 O's + empty), BLOCK IT NOW  
+3. 🎯 CREATE FORK: Try to create multiple winning threats (two ways to win)
+4. 🛡️ BLOCK FORK: If computer can create a fork, block it
+5. 🎯 CENTER: Take center (position 4) if available - strongest position
+6. 🏗️ OPPOSITE CORNER: If computer has a corner, take the opposite corner
+7. 🏗️ EMPTY CORNER: Take any corner (0,2,6,8) - second strongest positions  
+8. 🏗️ SIDE: Take any side (1,3,5,7) - weakest positions, use as last resort
+
+DECISION MAKING:
+- ALWAYS check the board analysis in getCurrGameStatus output
+- Look for "WIN OPPORTUNITIES" and "BLOCK THREATS" hints
+- If you see WIN OPPORTUNITIES: [5], immediately press cell 5  
+- If you see BLOCK THREATS: [2], immediately press cell 2
+- Never make random moves - always have a strategic reason
+- Think one move ahead: "If I play here, what can the computer do?"
+
+CRITICAL: TIC-TAC-TOE WINNING NUMBER RETURN:
+- After successfully extracting a winning number (14-digit code), you MUST return it as your final response
+- Format: "🏆 Victory! Winning number: [14-digit-code]"
+- Example: "🏆 Victory! Winning number: 20250902104856"
+- ALWAYS use close_tictactoe_browser after getting the winning number, then provide the final response
+- This 14-digit number is the primary goal and must be returned to the user
 
 HISTORY RETRIEVAL EFFICIENCY:
 - For memory questions: Use get_recent_client_inputs(k=3) ONCE, find the answer in the results, state it directly
@@ -276,7 +310,7 @@ Be concise and efficient. Avoid unnecessary tool calls."""
                         conversation_messages[first_user_msg_index]['content'] = content_blocks
                         print(f"🖼️ Added {len(images)} images to conversation")
             
-            max_iterations = 10  # Prevent infinite loops
+            max_iterations = 15  # Prevent infinite loops - increased for complex tic-tac-toe games
             iteration = 0
             
             while iteration < max_iterations:
